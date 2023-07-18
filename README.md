@@ -18,7 +18,7 @@ This class requires Qt 5 or later to work. You can download Qt [here](https://ww
 
    Constructs a new LnkFileInfo object that gives information about the given LNK file. `file` can be an absolute or a relative path.
    
-4. `LnkFileInfo(const QFileInfo &file): LnkFileInfo(QFileInfo(file))`
+4. `LnkFileInfo(const QFileInfo &file)`
 
    Constructs a new LnkFileInfo object that gives information about the LNK file in `file`. `file` can be an absolute or a relative path.
 
