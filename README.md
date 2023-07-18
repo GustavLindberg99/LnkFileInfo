@@ -99,7 +99,9 @@ This class requires Qt 5 or later to work. You can download Qt [here](https://ww
 
 - `bool targetHasAttribute(Attribute attribute) const`
 
-  Returns true if the target has the attribute `attribute`, and false otherwise. Note that this method only reads the information present in the LNK file, so the information might not be up to date. For up to date information about whether the target is read-only, hidden or is a directory, you can use [`targetFileInfo().isWritable()`](https://doc.qt.io/qt-5/qfileinfo.html#isWritable), [`targetFileInfo().isHidden()`](https://doc.qt.io/qt-5/qfileinfo.html#isHidden) or [`targetFileInfo().isDir()`](https://doc.qt.io/qt-5/qfileinfo.html#isDir).
+  Returns true if the target has the attribute `attribute`, and false otherwise. The attribute is of type [`LnkFileInfo::VolumeType`](https://github.com/GustavLindberg99/QtLnkFileInfo#lnkfileinfovolumetype-enum).
+
+  Note that this method only reads the information present in the LNK file, so the information might not be up to date. For up to date information about whether the target is read-only, hidden or is a directory, you can use [`targetFileInfo().isWritable()`](https://doc.qt.io/qt-5/qfileinfo.html#isWritable), [`targetFileInfo().isHidden()`](https://doc.qt.io/qt-5/qfileinfo.html#isHidden) or [`targetFileInfo().isDir()`](https://doc.qt.io/qt-5/qfileinfo.html#isDir).
 
 - `bool targetIsOnNetwork() const`
 
@@ -115,7 +117,7 @@ This class requires Qt 5 or later to work. You can download Qt [here](https://ww
 
 - `VolumeType targetVolumeType() const`
 
-  Returns the type of volume the target is on.
+  Returns the type of volume the target is on as a [`LnkFileInfo::VolumeType`](https://github.com/GustavLindberg99/QtLnkFileInfo#lnkfileinfovolumetype-enum).
 
 - `QString targetVolumeName() const`
 
