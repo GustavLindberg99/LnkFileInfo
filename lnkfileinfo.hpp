@@ -47,6 +47,14 @@ public:
     }
 
     virtual ~LnkFileInfo() = default;
+
+    std::string absoluteFilePath() const{
+        return std::filesystem::absolute(this->filePath()).string();
+    }
+
+    std::string absoluteTargetPath() const{
+        return std::filesystem::absolute(this->_targetPath).string();
+    }
     
     std::string commandLineArgs() const{
         return this->_commandLineArgs;
@@ -87,7 +95,7 @@ public:
             if(!file.good()){
                 throw std::exception("Failed to open file");
             }
-            std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>()));
+            const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>()));
             file.close();
 
             //Check the headers
@@ -167,8 +175,12 @@ public:
         }
     }
 
+    std::string relativeTargetPath() const{
+        return this->_relativeTargetPath;
+    }
+
     bool targetExists() const{
-        return std::filesystem::exists(this->targetPath());
+        return std::filesystem::exists(this->absoluteTargetPath());
     }
 
     bool targetHasAttribute(Attribute attribute) const{
@@ -179,11 +191,7 @@ public:
         return this->_targetIsOnNetwork;
     }
 
-    std::string targetPath() const{
-        return this->_targetPath;
-    }
-
-    unsigned int targetSize() const{    //The size of the target in bytes
+    unsigned int targetSize() const{
         return this->_targetSize;
     }
 
@@ -204,7 +212,7 @@ public:
     }
 
     bool operator==(const LnkFileInfo &other) const{
-        return this->_filePath == other._filePath;
+        return this->absoluteFilePath() == other.absoluteFilePath();
     }
 
     bool operator!=(const LnkFileInfo &other) const{
