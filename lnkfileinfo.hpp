@@ -1,12 +1,16 @@
 /*
- * LNK file info class for Qt
+ * LNK file info class
  * By Gustav Lindberg
  * Version 1.0.0
+ * https://github.com/GustavLindberg99/LnkFileInfo
  * Information about how LNK files work is from https://github.com/lcorbasson/lnk-parse/blob/master/lnk-parse.pl
  */
 
-#include <QFile>
-#include <QFileInfo>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
 
 class LnkFileInfo{
 public:
@@ -37,37 +41,34 @@ public:
     };
 
     LnkFileInfo(): _isValid(false), _targetAttributes(0), _targetSize(0), _targetIsOnNetwork(false), _iconIndex(0), _targetVolumeType(VolumeType::Unknown), _targetVolumeSerial(0){}
-    LnkFileInfo(const QString &file): LnkFileInfo(QFileInfo(file)){}
-    LnkFileInfo(const QFile &file): LnkFileInfo(QFileInfo(file)){}
-    LnkFileInfo(const QFileInfo &file): _fileInfo(file), _isValid(true){
+
+    LnkFileInfo(const std::string &filePath): _filePath(filePath), _isValid(true){
         this->refresh();
     }
 
-    QString absolutePath() const{
-        return QFileInfo(*this).absoluteFilePath();
-    }
-
-    QString absoluteTargetPath() const{
-        return this->_absoluteTargetPath;
-    }
-
-    QString commandLineArgs() const{
+    virtual ~LnkFileInfo() = default;
+    
+    std::string commandLineArgs() const{
         return this->_commandLineArgs;
     }
-
-    QString description() const{
+    
+    std::string description() const{
         return this->_description;
     }
 
     bool exists() const{
-        return QFileInfo(*this).exists();
+        return std::filesystem::exists(this->filePath());
+    }
+
+    std::string filePath() const{
+        return this->_filePath;
     }
 
     bool hasCustomIcon() const{
-        return !this->iconPath().isEmpty();
+        return !this->iconPath().empty();
     }
-
-    QString iconPath() const{
+    
+    std::string iconPath() const{
         return this->_iconPath;
     }
 
@@ -80,73 +81,75 @@ public:
     }
 
     void refresh(){
-        QFile file = *this;
         try{
-            if(!file.open(QFile::ReadOnly)){
+            //Open the file
+            std::ifstream file(this->_filePath, std::ios::binary);
+            if(!file.good()){
                 throw std::exception("Failed to open file");
             }
-            QByteArray bytes = file.readAll();
+            std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>()));
+            file.close();
 
             //Check the headers
-            if(readInteger<quint8>(bytes, 0) != 0x4C){
+            if(readInteger<uint8_t>(bytes, 0) != 0x4C){
                 throw std::exception("Invalid header");
             }
-            const quint16 start = 78 + readInteger<quint16>(bytes, 76);
-            if(readInteger<quint8>(bytes, start + 4) != 0x1C){
+            const uint16_t start = 78 + readInteger<uint16_t>(bytes, 76);
+            if(readInteger<uint8_t>(bytes, start + 4) != 0x1C){
                 throw std::exception("Invalid fileinfo header");
             }
 
             //Target info
-            this->_targetAttributes = readInteger<quint16>(bytes, 24);
-            this->_targetSize = readInteger<quint32>(bytes, 52);
-            this->_targetIsOnNetwork = readInteger<quint8>(bytes, start + 8) & 0x02;
+            this->_targetAttributes = readInteger<uint16_t>(bytes, 24);
+            this->_targetSize = readInteger<uint32_t>(bytes, 52);
+            this->_targetIsOnNetwork = readInteger<uint8_t>(bytes, start + 8) & 0x02;
 
             //Path and volume info
             if(this->_targetIsOnNetwork){
-                const quint32 volumeOffset = start + readInteger<quint32>(bytes, start + 20);
+                const uint32_t volumeOffset = start + readInteger<uint32_t>(bytes, start + 20);
                 this->_targetVolumeType = VolumeType::NetworkDrive;
                 this->_targetVolumeSerial = 0;
-                const QByteArray volumeName = readNullTerminatedString(bytes, volumeOffset + 20);
+                const std::string volumeName = readNullTerminatedString(bytes, volumeOffset + 20);
                 this->_targetVolumeName = volumeName;
-                const quint32 pathOffset = volumeOffset + 21 + volumeName.size();
-                const QByteArray targetDrive = readNullTerminatedString(bytes, pathOffset);
-                this->_absoluteTargetPath = targetDrive + "\\" + readNullTerminatedString(bytes, pathOffset + 1 + targetDrive.size());
+                const size_t pathOffset = volumeOffset + 21 + volumeName.size();
+                const std::string targetDrive = readNullTerminatedString(bytes, pathOffset);
+                this->_targetPath = targetDrive + "\\" + readNullTerminatedString(bytes, pathOffset + 1 + targetDrive.size());
             }
             else{
-                const quint32 volumeOffset = start + readInteger<quint32>(bytes, start + 12);
-                this->_targetVolumeType = static_cast<VolumeType>(readInteger<quint32>(bytes, volumeOffset + 4));
-                this->_targetVolumeSerial = readInteger<quint32>(bytes, volumeOffset + 8);
+                const uint32_t volumeOffset = start + readInteger<uint32_t>(bytes, start + 12);
+                this->_targetVolumeType = static_cast<VolumeType>(readInteger<uint32_t>(bytes, volumeOffset + 4));
+                this->_targetVolumeSerial = readInteger<uint32_t>(bytes, volumeOffset + 8);
                 this->_targetVolumeName = readNullTerminatedString(bytes, volumeOffset + 16);
-                const quint32 pathOffset = readInteger<quint32>(bytes, start + 16);
-                this->_absoluteTargetPath = readNullTerminatedString(bytes, start + pathOffset);
+                const uint32_t pathOffset = readInteger<uint32_t>(bytes, start + 16);
+                this->_targetPath = readNullTerminatedString(bytes, start + pathOffset);
             }
 
             //Additional info
-            const quint8 flags = readInteger<quint8>(bytes, 20);
-            quint32 nextLocation = start + readInteger<quint32>(bytes, start);
+            const uint8_t flags = readInteger<uint8_t>(bytes, 20);
+            size_t nextLocation = start + readInteger<uint32_t>(bytes, start);
             if(flags & Flag::HasDescription){
-                const QPair data = readFixedLengthString(bytes, nextLocation);
+                const std::pair data = readFixedLengthString(bytes, nextLocation);
                 this->_description = data.first;
                 nextLocation = data.second;
             }
             if(flags & Flag::HasRelativePath){
-                const QPair data = readFixedLengthString(bytes, nextLocation);
+                const std::pair data = readFixedLengthString(bytes, nextLocation);
                 this->_relativeTargetPath = data.first;
                 nextLocation = data.second;
             }
             if(flags & Flag::HasWorkingDirectory){
-                const QPair data = readFixedLengthString(bytes, nextLocation);
+                const std::pair data = readFixedLengthString(bytes, nextLocation);
                 this->_workingDirectory = data.first;
                 nextLocation = data.second;
             }
             if(flags & Flag::HasCommandLineArgs){
-                const QPair data = readFixedLengthString(bytes, nextLocation);
+                const std::pair data = readFixedLengthString(bytes, nextLocation);
                 this->_commandLineArgs = data.first;
                 nextLocation = data.second;
             }
             if(flags & Flag::HasCustomIcon){
                 this->_iconPath = readFixedLengthString(bytes, nextLocation).first;
-                this->_iconIndex = readInteger<quint32>(bytes, 56);
+                this->_iconIndex = readInteger<uint32_t>(bytes, 56);
             }
         }
         catch(const std::exception&){
@@ -156,7 +159,7 @@ public:
             this->_targetSize = 0;
             this->_targetIsOnNetwork = false;
             this->_iconIndex = 0;
-            this->_absoluteTargetPath = "";
+            this->_targetPath = "";
             this->_targetVolumeType = VolumeType::Unknown;
             this->_targetVolumeSerial = 0;
             this->_targetVolumeName = "";
@@ -165,15 +168,7 @@ public:
     }
 
     bool targetExists() const{
-        return this->targetFileInfo().exists();
-    }
-
-    QFile targetFile() const{
-        return QFile(this->_absoluteTargetPath);
-    }
-
-    QFileInfo targetFileInfo() const{
-        return QFileInfo(this->_absoluteTargetPath);
+        return std::filesystem::exists(this->targetPath());
     }
 
     bool targetHasAttribute(Attribute attribute) const{
@@ -182,6 +177,10 @@ public:
 
     bool targetIsOnNetwork() const{
         return this->_targetIsOnNetwork;
+    }
+
+    std::string targetPath() const{
+        return this->_targetPath;
     }
 
     unsigned int targetSize() const{    //The size of the target in bytes
@@ -196,28 +195,20 @@ public:
         return this->_targetVolumeType;
     }
 
-    QString targetVolumeName() const{
+    std::string targetVolumeName() const{
         return this->_targetVolumeName;
     }
 
-    QString workingDirectory() const{
+    std::string workingDirectory() const{
         return this->_workingDirectory;
     }
 
     bool operator==(const LnkFileInfo &other) const{
-        return QFileInfo(*this) == QFileInfo(other);
+        return this->_filePath == other._filePath;
     }
 
     bool operator!=(const LnkFileInfo &other) const{
         return !(*this == other);
-    }
-
-    operator QFile() const{
-        return QFile(this->absolutePath());
-    }
-
-    operator QFileInfo() const{
-        return this->_fileInfo;
     }
 
 private:
@@ -232,44 +223,102 @@ private:
     };
 
     template<typename T>
-    static T readInteger(const QByteArray &bytes, quint32 i){
+    static T readInteger(const std::vector<uint8_t> &bytes, size_t i){
         if(i + sizeof(T) > bytes.size()){
             throw std::exception("Index out of range");
         }
         T result = 0;
-        for(quint32 j = 0; j < sizeof(T); j++){
-            result += quint8(bytes.at(i + j)) * (T(1) << (j * 8));    //It's necessary to convert bytes.at(...) to quint8, othewise it's signed so it will cause overflow if it's negative
+        for(unsigned int j = 0; j < sizeof(T); j++){
+            result += uint8_t(bytes.at(i + j)) * (T(1) << (j * 8));    //It's necessary to convert bytes.at(...) to uint8_t, othewise it's signed so it will cause overflow if it's negative
         }
         return result;
     }
 
-    static QByteArray readNullTerminatedString(const QByteArray &bytes, quint32 i){
-        QByteArray result;
-        while(char currentCharacter = readInteger<quint8>(bytes, i++)){
+    static std::string readNullTerminatedString(const std::vector<uint8_t> &bytes, size_t i){
+        std::string result;
+        while(char currentCharacter = readInteger<uint8_t>(bytes, i++)){
             result += currentCharacter;
         }
         return result;
     }
 
-    static QPair<QString, quint32> readFixedLengthString(const QByteArray &bytes, quint32 i){    //Reads a string for which the first two bytes indicate the length, then the rest is the string itself encoded in UTF-16
-        const quint32 end = i + readInteger<quint16>(bytes, i) * 2;
-        QString result;
+    static std::pair<std::string, size_t> readFixedLengthString(const std::vector<uint8_t> &bytes, size_t i){    //Reads a string for which the first two bytes indicate the length, then the rest is the string itself encoded in UTF-16
+        //Code for UTF16 to UTF8 conversion from https://github.com/Davipb/utf8-utf16-converter
+        constexpr uint32_t GENERIC_SURROGATE_MASK = 0xF800;
+        constexpr uint32_t GENERIC_SURROGATE_VALUE = 0xD800;
+        constexpr uint32_t HIGH_SURROGATE_VALUE = 0xD800;
+        constexpr uint32_t LOW_SURROGATE_VALUE = 0xDC00;
+        constexpr uint32_t SURROGATE_MASK = 0xFC00;
+        constexpr uint32_t SURROGATE_CODEPOINT_MASK = 0x03FF;
+        constexpr uint32_t SURROGATE_CODEPOINT_BITS = 10;
+        constexpr uint32_t SURROGATE_CODEPOINT_OFFSET = 0x10000;
+        constexpr uint32_t INVALID_CODEPOINT = 0xFFFD;
+
+        const size_t end = i + readInteger<uint16_t>(bytes, i) * 2;
+        std::string result;
         for(i += 2; i <= end; i += 2){
-            const quint16 currentCharacter = readInteger<quint16>(bytes, i);
-            result += QString::fromUtf16(&currentCharacter, 1);
+            const uint16_t high = readInteger<uint16_t>(bytes, i);
+            uint32_t codepoint;
+            if((high & GENERIC_SURROGATE_MASK) != GENERIC_SURROGATE_VALUE){
+                codepoint = high;
+            }
+            else if((high & SURROGATE_MASK) != HIGH_SURROGATE_VALUE || end < i + 4){
+                codepoint = INVALID_CODEPOINT;
+            }
+            else{
+                const uint16_t low = readInteger<uint16_t>(bytes, i + 2);
+                if((low & SURROGATE_MASK) != LOW_SURROGATE_VALUE){
+                    codepoint = INVALID_CODEPOINT;
+                }
+                else{
+                    codepoint = (((high & SURROGATE_CODEPOINT_MASK) << SURROGATE_CODEPOINT_BITS) | (low & SURROGATE_CODEPOINT_MASK)) + SURROGATE_CODEPOINT_OFFSET;
+                    i += 2;
+                }
+            }
+
+            const int numberOfBytes = codepoint > 0xFFFF ? 4 : codepoint > 0x7FF ? 3 : codepoint > 0x7F ? 2 : 1;
+            int continuationMask = 0x3F;
+            int continuationValue = 0x80;
+            std::string bytes;
+            for(int j = numberOfBytes; j > 0; j--){
+                if(j == 1){
+                    switch(numberOfBytes){
+                    case 1:
+                        continuationMask = 0x7F;
+                        continuationValue = 0x00;
+                        break;
+                    case 2:
+                        continuationMask = 0x1F;
+                        continuationValue = 0xC0;
+                        break;
+                    case 3:
+                        continuationMask = 0x0F;
+                        continuationValue = 0xE0;
+                        break;
+                    case 4:
+                        continuationMask = 0x07;
+                        continuationValue = 0xF0;
+                        break;
+                    }
+                }
+                const char cont = (codepoint & continuationMask) | continuationValue;
+                bytes = cont + bytes;
+                codepoint >>= 6;
+            }
+            result += bytes;
         }
-        return QPair(result, end + 2);
+        return std::make_pair(result, end + 2);
     }
 
-    QFileInfo _fileInfo;    //This can't be const otherwise the copy assignment operator won't automatically be generated by the compiler
+    std::string _filePath;
     bool _isValid;
-    quint16 _targetAttributes;
-    quint32 _targetSize;
+    uint16_t _targetAttributes;
+    uint32_t _targetSize;
     bool _targetIsOnNetwork;
-    quint32 _iconIndex;
-    QString _absoluteTargetPath;
+    uint32_t _iconIndex;
+    std::string _targetPath;
     VolumeType _targetVolumeType;
-    quint32 _targetVolumeSerial;
-    QString _targetVolumeName;
-    QString _description, _relativeTargetPath, _workingDirectory, _commandLineArgs, _iconPath;
+    uint32_t _targetVolumeSerial;
+    std::string _targetVolumeName;
+    std::string _description, _relativeTargetPath, _workingDirectory, _commandLineArgs, _iconPath;
 };
