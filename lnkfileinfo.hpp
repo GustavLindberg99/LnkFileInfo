@@ -6,6 +6,9 @@
  * Information about how LNK files work is from https://github.com/lcorbasson/lnk-parse/blob/master/lnk-parse.pl
  */
 
+#ifndef LNKFILEINFO_HPP
+#define LNKFILEINFO_HPP
+
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -331,3 +334,5 @@ private:
     std::string _targetVolumeName;
     std::string _description, _relativeTargetPath, _workingDirectory, _commandLineArgs, _iconPath;
 };
+
+#endif // LNKFILEINFO_HPP
