@@ -46,6 +46,7 @@ public:
         this->refresh();
     }
 
+    //Virtual destructor in case the library user wants to create a subclass
     virtual ~LnkFileInfo() = default;
 
     std::string absoluteFilePath() const{
@@ -236,8 +237,8 @@ private:
             throw std::exception("Index out of range");
         }
         T result = 0;
-        for(unsigned int j = 0; j < sizeof(T); j++){
-            result += uint8_t(bytes.at(i + j)) * (T(1) << (j * 8));    //It's necessary to convert bytes.at(...) to uint8_t, othewise it's signed so it will cause overflow if it's negative
+        for(size_t j = 0; j < sizeof(T); j++){
+            result += bytes.at(i + j) * (T(1) << (j * 8));
         }
         return result;
     }
