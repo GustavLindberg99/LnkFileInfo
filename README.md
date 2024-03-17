@@ -75,7 +75,7 @@ This class requires C++17 or later to work, there are no dependencies to third-p
 
 - `std::string relativeTargetPath() const`
 
-  Returns the the path of the target relative to the LNK file, as specified in the LNK file. This can be useful for example if the LNK file and the target are both on a removeable drive for which the drive letter has changed, or if a common parent folder to the target and the LNK file has been moved or renamed.
+  Returns the the path of the target relative to the LNK file, as specified in the LNK file. This can be useful for example if the LNK file and the target are both on a removeable drive for which the drive letter has changed, or if a common parent folder to the target and the LNK file has been moved or renamed. If this information is not present in the LNK file, returns an empty string.
 
   This method only reads the information present in the LNK file, so the information might not be up to date.
 
