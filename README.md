@@ -85,7 +85,7 @@ This class requires C++17 or later to work, there are no dependencies to third-p
 
 - `bool targetHasAttribute(Attribute attribute) const`
 
-  Returns true if the target has the attribute `attribute`, and false otherwise. The attribute is of type [`LnkFileInfo::VolumeType`](https://github.com/GustavLindberg99/LnkFileInfo#lnkfileinfovolumetype-enum).
+  Returns true if the target has the attribute `attribute`, and false otherwise. The attribute is of type [`LnkFileInfo::Attribute`](https://github.com/GustavLindberg99/LnkFileInfo#lnkfileinfoattribute-enum).
 
   This method only reads the information present in the LNK file, so the information might not be up to date.
 

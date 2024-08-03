@@ -1,7 +1,7 @@
 /*
  * LNK file info class
  * By Gustav Lindberg
- * Version 1.0.0
+ * Version 1.0.1
  * https://github.com/GustavLindberg99/LnkFileInfo
  * Information about how LNK files work is from https://github.com/lcorbasson/lnk-parse/blob/master/lnk-parse.pl
  */
@@ -15,8 +15,14 @@
 #include <string>
 #include <vector>
 
+/**
+ * The LnkFileInfo class is a class that parses LNK files and shows information about them, such as their target path, their icon, etc. Although LNK files are Windows-specific, this library is cross-platform, which means that it can also be used on non-Windows systems to parse LNK files that have been copied there from Windows.
+ */
 class LnkFileInfo{
 public:
+    /**
+     * This enum is used together with the `targetHasAttribute` method to check if the target has a given attribute according to the LNK file. For more information about what each of these attributes mean, see [File attribute - Wikipedia](https://en.wikipedia.org/wiki/File_attribute).
+     */
     enum Attribute{
         ReadOnly         = 0x0001,
         Hidden           = 0x0002,
@@ -33,6 +39,9 @@ public:
         Offline          = 0x1000
     };
 
+    /**
+     * This enum is used together with the `targetVolumeType` method to indicate which type of volume the target is on.
+     */
     enum VolumeType{
         Unknown         = 0,
         NoRootDirectory = 1,
@@ -43,72 +52,118 @@ public:
         RamDrive        = 6
     };
 
+    /**
+     * Constructs an empty LnkFileInfo object. This object will be invalid until a new object is assigned to it.
+     */
     LnkFileInfo(): _isValid(false), _targetAttributes(0), _targetSize(0), _targetIsOnNetwork(false), _iconIndex(0), _targetVolumeType(VolumeType::Unknown), _targetVolumeSerial(0){}
 
+    /**
+     * Constructs a new LnkFileInfo object that gives information about the given LNK file.
+     *
+     * @param filePath  The path of the LNK file. Can be an absolute or a relative path.
+     */
     LnkFileInfo(const std::string &filePath): _filePath(filePath), _isValid(true){
         this->refresh();
     }
 
-    //Virtual destructor in case the library user wants to create a subclass
+    /**
+     * Virtual destructor in case the library user wants to create a subclass.
+     */
     virtual ~LnkFileInfo() = default;
 
+    /**
+     * Returns the absolute path of the LNK file itself, including the file name.
+     */
     std::string absoluteFilePath() const{
+        if(!this->exists()){
+            return "";
+        }
         return std::filesystem::absolute(this->filePath()).string();
     }
 
+    /**
+     * Returns the absolute path of the target file. If the LNK file does not exist or is invalid, returns an empty string. If the LNK file exists and is valid but points to a nonexistent file, returns the absolute path of that nonexistent file.
+     */
     std::string absoluteTargetPath() const{
-        return std::filesystem::absolute(this->_targetPath).string();
+        return this->_targetPath;
     }
-    
+
+    /**
+     * Returns the command line arguments of the LNK file, if any, not including the target. For example, if the LNK file points to `cmd.exe /v /c python.exe`, this method will return `/v /c python.exe`.
+     */
     std::string commandLineArgs() const{
         return this->_commandLineArgs;
     }
-    
+
+    /**
+     * Returns the description of the LNK file. The description is the custom text that appears when hovering over the LNK file in Windows Explorer, and can be edited in Windows Explorer by going to Properties -> Comment. If the LNK file has no custom description, this method returns an empty string.
+     */
     std::string description() const{
         return this->_description;
     }
 
+    /**
+     * Returns `true` if the LNK file exists, regardless of whether or not it is a valid LNK file, and returns `false` otherwise. See also `isValid()` and `targetExists()`.
+     */
     bool exists() const{
         return std::filesystem::exists(this->filePath());
     }
 
+    /**
+     * Returns the path of the LNK file itself as specified in the constructor, including the file name. Can be absolute or relative.
+     */
     std::string filePath() const{
         return this->_filePath;
     }
 
+    /**
+     * Returns `true` if the LNK file has a custom icon (including if the icon was manually set to be the same as its target), and `false` if it doesn't (meaning the icon shown in Windows Explorer is the same as the target's icon). See also `iconPath()` and `iconIndex()`.
+     */
     bool hasCustomIcon() const{
         return !this->iconPath().empty();
     }
-    
+
+    /**
+     * If the LNK file has a custom icon, returns the path to the file containing that icon. Returns an empty string if the LNK file has no custom icon. See also `hasCustomIcon()` and `iconIndex()`.
+     */
     std::string iconPath() const{
         return this->_iconPath;
     }
 
+    /**
+     * If the LNK file has a custom icon, returns the index of that icon in the icon file. Returns zero if the LNK file has no custom icon. See also `hasCustomIcon()` and `iconPath()`.
+     */
     int iconIndex() const{
         return this->_iconIndex;
     }
 
+    /**
+     * Returns `true` if the LNK file exists and is a valid LNK file (regardless of whether or not the target exists), and `false` otherwise. See also `exists()` and `targetExists()`.
+     */
     bool isValid() const{
         return this->_isValid;
     }
 
+    /**
+     * Re-reads all the information about the LNK file from the file system.
+     */
     void refresh(){
         try{
             //Open the file
             std::ifstream file(this->_filePath, std::ios::binary);
             if(!file.good()){
-                throw std::exception("Failed to open file");
+                throw std::runtime_error("Failed to open file");
             }
             const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>()));
             file.close();
 
             //Check the headers
             if(readInteger<uint8_t>(bytes, 0) != 0x4C){
-                throw std::exception("Invalid header");
+                throw std::runtime_error("Invalid header");
             }
             const uint16_t start = 78 + readInteger<uint16_t>(bytes, 76);
             if(readInteger<uint8_t>(bytes, start + 4) != 0x1C){
-                throw std::exception("Invalid fileinfo header");
+                throw std::runtime_error("Invalid fileinfo header");
             }
 
             //Target info
@@ -164,7 +219,7 @@ public:
                 this->_iconIndex = readInteger<uint32_t>(bytes, 56);
             }
         }
-        catch(const std::exception&){
+        catch(const std::runtime_error&){
             //Reset everything to avoid garbage values
             this->_isValid = false;
             this->_targetAttributes = 0;
@@ -179,46 +234,83 @@ public:
         }
     }
 
+    /**
+     * Returns the the path of the target relative to the LNK file, as specified in the LNK file. This can be useful for example if the LNK file and the target are both on a removeable drive for which the drive letter has changed, or if a common parent folder to the target and the LNK file has been moved or renamed. If this information is not present in the LNK file, returns an empty string.
+     *
+     * This method only reads the information present in the LNK file, so the information might not be up to date.
+     */
     std::string relativeTargetPath() const{
         return this->_relativeTargetPath;
     }
 
+    /**
+     * Returns `true` if the target exists, and `false` otherwise. See also `exists()` and `isValid()`.
+     */
     bool targetExists() const{
         return std::filesystem::exists(this->absoluteTargetPath());
     }
 
+    /**
+     * Returns true if the target has the attribute `attribute`, and false otherwise.
+     *
+     * @param attribute The attribute to check for, as an instance of the LnkFileInfo::Attribute enum.
+     */
     bool targetHasAttribute(Attribute attribute) const{
         return this->_targetAttributes & attribute;
     }
 
+    /**
+     * Returns `true` if the target is on a network drive, and `false` otherwise.
+     */
     bool targetIsOnNetwork() const{
         return this->_targetIsOnNetwork;
     }
 
+    /**
+     * Returns the size of the target file in bytes. This method only reads the information present in the LNK file, so the information might not be up to date. For up to date information, you can use `std::filesystem::file_size`.
+     */
     unsigned int targetSize() const{
         return this->_targetSize;
     }
 
+    /**
+     * Returns the serial number of the volume that the target is on. Returns zero if target is on a network drive.
+     */
     int targetVolumeSerial() const{
         return this->_targetVolumeSerial;
     }
 
+    /**
+     * Returns the type of volume the target is on as a `LnkFileInfo::VolumeType`.
+     */
     VolumeType targetVolumeType() const{
         return this->_targetVolumeType;
     }
 
+    /**
+     * Returns the name of the drive the target is on as shown in the This PC folder if that drive has a custom name, and an empty string otherwise. Note that on most Windows computers, while the hard drive is called "Local Disk" by default, this is not a custom name so an empty string will be returnd in that case.
+     */
     std::string targetVolumeName() const{
         return this->_targetVolumeName;
     }
 
+    /**
+     * Returns the working directory specified in the LNK file. This can be edited in Windows Explorer by going to Properties -> Start in.
+     */
     std::string workingDirectory() const{
         return this->_workingDirectory;
     }
 
+    /**
+     * Returns `true` if this LnkFileInfo object refers to the same LNK file as `other`, and `false` otherwise. The behavior is undefined if both LnkFileInfo objects are either empty or refer to LNK files that do not exist.
+     */
     bool operator==(const LnkFileInfo &other) const{
         return this->absoluteFilePath() == other.absoluteFilePath();
     }
 
+    /**
+     * Returns `false` if this LnkFileInfo object refers to the same LNK file as `other`, and `true` otherwise. The behavior is undefined if both LnkFileInfo objects are either empty or refer to LNK files that do not exist.
+     */
     bool operator!=(const LnkFileInfo &other) const{
         return !(*this == other);
     }
@@ -237,7 +329,7 @@ private:
     template<typename T>
     static T readInteger(const std::vector<uint8_t> &bytes, size_t i){
         if(i + sizeof(T) > bytes.size()){
-            throw std::exception("Index out of range");
+            throw std::runtime_error("Index out of range");
         }
         T result = 0;
         for(size_t j = 0; j < sizeof(T); j++){
