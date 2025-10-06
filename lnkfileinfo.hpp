@@ -1,7 +1,7 @@
 /*
  * LNK file info class
  * By Gustav Lindberg
- * Version 2.0.0
+ * Version 2.0.1
  * https://github.com/GustavLindberg99/LnkFileInfo
  * Information about how LNK files work is from https://github.com/lcorbasson/lnk-parse/blob/master/lnk-parse.pl
  */
@@ -173,7 +173,8 @@ public:
             throw InvalidLnkFile("Invalid header", this);
         }
         const uint16_t start = 78 + this->readInteger<uint16_t>(bytes, 76);
-        if(this->readInteger<uint8_t>(bytes, start + 4) != 0x1C){
+        const uint8_t fileinfoHeader = this->readInteger<uint8_t>(bytes, start + 4);
+        if(fileinfoHeader != 0x1C && fileinfoHeader != 0x24){
             throw InvalidLnkFile("Invalid fileinfo header", this);
         }
 
@@ -183,50 +184,55 @@ public:
         this->_targetIsOnNetwork = this->readInteger<uint8_t>(bytes, start + 8) & 0x02;
 
         //Path and volume info
+        size_t pathOffset;
         if(this->_targetIsOnNetwork){
             const uint32_t volumeOffset = start + this->readInteger<uint32_t>(bytes, start + 20);
             this->_targetVolumeType = VolumeType::NetworkDrive;
             this->_targetVolumeSerial = 0;
             const std::string volumeName = this->readNullTerminatedString(bytes, volumeOffset + 20);
             this->_targetVolumeName = volumeName;
-            const size_t pathOffset = volumeOffset + 21 + volumeName.size();
+            pathOffset = volumeOffset + 21 + volumeName.size();
             const std::string targetDrive = this->readNullTerminatedString(bytes, pathOffset);
-            this->_targetPath = targetDrive + "\\" + this->readNullTerminatedString(bytes, pathOffset + 1 + targetDrive.size());
+            pathOffset += targetDrive.size() + 1;
+            this->_targetPath = targetDrive + "\\" + this->readNullTerminatedString(bytes, pathOffset);
         }
         else{
             const uint32_t volumeOffset = start + this->readInteger<uint32_t>(bytes, start + 12);
             this->_targetVolumeType = static_cast<VolumeType>(this->readInteger<uint32_t>(bytes, volumeOffset + 4));
             this->_targetVolumeSerial = this->readInteger<uint32_t>(bytes, volumeOffset + 8);
             this->_targetVolumeName = this->readNullTerminatedString(bytes, volumeOffset + 16);
-            const uint32_t pathOffset = this->readInteger<uint32_t>(bytes, start + 16);
-            this->_targetPath = this->readNullTerminatedString(bytes, start + pathOffset);
+            pathOffset = start + this->readInteger<uint32_t>(bytes, start + 16);
+            this->_targetPath = this->readNullTerminatedString(bytes, pathOffset);
+        }
+        if(fileinfoHeader == 0x24){
+            this->_targetPath = this->readFixedLengthString(bytes, pathOffset + this->_targetPath.size(), this->_targetPath.size() * 2);
         }
 
         //Additional info
         const uint8_t flags = this->readInteger<uint8_t>(bytes, 20);
         size_t nextLocation = start + this->readInteger<uint32_t>(bytes, start);
         if(flags & Flag::HasDescription){
-            const std::pair data = this->readFixedLengthString(bytes, nextLocation);
+            const std::pair data = this->readStringWithPrependedLength(bytes, nextLocation);
             this->_description = data.first;
             nextLocation = data.second;
         }
         if(flags & Flag::HasRelativePath){
-            const std::pair data = this->readFixedLengthString(bytes, nextLocation);
+            const std::pair data = this->readStringWithPrependedLength(bytes, nextLocation);
             this->_relativeTargetPath = data.first;
             nextLocation = data.second;
         }
         if(flags & Flag::HasWorkingDirectory){
-            const std::pair data = this->readFixedLengthString(bytes, nextLocation);
+            const std::pair data = this->readStringWithPrependedLength(bytes, nextLocation);
             this->_workingDirectory = data.first;
             nextLocation = data.second;
         }
         if(flags & Flag::HasCommandLineArgs){
-            const std::pair data = this->readFixedLengthString(bytes, nextLocation);
+            const std::pair data = this->readStringWithPrependedLength(bytes, nextLocation);
             this->_commandLineArgs = data.first;
             nextLocation = data.second;
         }
         if(flags & Flag::HasCustomIcon){
-            this->_iconPath = this->readFixedLengthString(bytes, nextLocation).first;
+            this->_iconPath = this->readStringWithPrependedLength(bytes, nextLocation).first;
             this->_iconIndex = this->readInteger<uint32_t>(bytes, 56);
         }
     }
@@ -363,15 +369,17 @@ private:
     }
 
     /**
-     * Reads a UTF-16 encoded string from the LNK file where the first two bytes contain the length of the string.
+     * Reads a UTF-16 codepoint from the LNK file.
+     *
+     * Code for UTF16 to UTF8 conversion from https://github.com/Davipb/utf8-utf16-converter
      *
      * @param bytes The bytes contained in the LNK file.
-     * @param i     The offset to start reading at at (i.e. the offset containing the length of the string).
+     * @param i     The offset to start reading at at.
+     * @param end   The maximum offset to read at.
      *
-     * @return The string encoded as UTF-8.
+     * @return A pair containing the codepoint encoded as UTF-8 and the number of bytes read.
      */
-    std::pair<std::string, size_t> readFixedLengthString(const std::vector<uint8_t> &bytes, size_t i) const {    //Reads a string for which the first two bytes indicate the length, then the rest is the string itself encoded in UTF-16
-        //Code for UTF16 to UTF8 conversion from https://github.com/Davipb/utf8-utf16-converter
+    std::pair<std::string, size_t> readUtf16Codepoint(const std::vector<uint8_t> &bytes, size_t i, size_t end) const {
         constexpr uint32_t GENERIC_SURROGATE_MASK = 0xF800;
         constexpr uint32_t GENERIC_SURROGATE_VALUE = 0xD800;
         constexpr uint32_t HIGH_SURROGATE_VALUE = 0xD800;
@@ -382,60 +390,96 @@ private:
         constexpr uint32_t SURROGATE_CODEPOINT_OFFSET = 0x10000;
         constexpr uint32_t INVALID_CODEPOINT = 0xFFFD;
 
-        const size_t end = i + this->readInteger<uint16_t>(bytes, i) * 2;
-        std::string result;
-        for(i += 2; i <= end; i += 2){
-            const uint16_t high = this->readInteger<uint16_t>(bytes, i);
-            uint32_t codepoint;
-            if((high & GENERIC_SURROGATE_MASK) != GENERIC_SURROGATE_VALUE){
-                codepoint = high;
-            }
-            else if((high & SURROGATE_MASK) != HIGH_SURROGATE_VALUE || end < i + 4){
+        const uint16_t high = this->readInteger<uint16_t>(bytes, i);
+        size_t bytesRead = 2;
+        uint32_t codepoint;
+        if((high & GENERIC_SURROGATE_MASK) != GENERIC_SURROGATE_VALUE){
+            codepoint = high;
+        }
+        else if((high & SURROGATE_MASK) != HIGH_SURROGATE_VALUE || end < i + 4){
+            codepoint = INVALID_CODEPOINT;
+        }
+        else{
+            const uint16_t low = this->readInteger<uint16_t>(bytes, i + 2);
+            if((low & SURROGATE_MASK) != LOW_SURROGATE_VALUE){
                 codepoint = INVALID_CODEPOINT;
             }
             else{
-                const uint16_t low = this->readInteger<uint16_t>(bytes, i + 2);
-                if((low & SURROGATE_MASK) != LOW_SURROGATE_VALUE){
-                    codepoint = INVALID_CODEPOINT;
-                }
-                else{
-                    codepoint = (((high & SURROGATE_CODEPOINT_MASK) << SURROGATE_CODEPOINT_BITS) | (low & SURROGATE_CODEPOINT_MASK)) + SURROGATE_CODEPOINT_OFFSET;
-                    i += 2;
-                }
+                codepoint = (((high & SURROGATE_CODEPOINT_MASK) << SURROGATE_CODEPOINT_BITS) | (low & SURROGATE_CODEPOINT_MASK)) + SURROGATE_CODEPOINT_OFFSET;
+                bytesRead += 2;
             }
+        }
 
-            const int numberOfBytes = codepoint > 0xFFFF ? 4 : codepoint > 0x7FF ? 3 : codepoint > 0x7F ? 2 : 1;
-            int continuationMask = 0x3F;
-            int continuationValue = 0x80;
-            std::string bytes;
-            for(int j = numberOfBytes; j > 0; j--){
-                if(j == 1){
-                    switch(numberOfBytes){
-                    case 1:
-                        continuationMask = 0x7F;
-                        continuationValue = 0x00;
-                        break;
-                    case 2:
-                        continuationMask = 0x1F;
-                        continuationValue = 0xC0;
-                        break;
-                    case 3:
-                        continuationMask = 0x0F;
-                        continuationValue = 0xE0;
-                        break;
-                    case 4:
-                        continuationMask = 0x07;
-                        continuationValue = 0xF0;
-                        break;
-                    }
+        const int numberOfBytes = codepoint > 0xFFFF ? 4 : codepoint > 0x7FF ? 3 : codepoint > 0x7F ? 2 : 1;
+        int continuationMask = 0x3F;
+        int continuationValue = 0x80;
+        std::string result;
+        for(int j = numberOfBytes; j > 0; j--){
+            if(j == 1){
+                switch(numberOfBytes){
+                case 1:
+                    continuationMask = 0x7F;
+                    continuationValue = 0x00;
+                    break;
+                case 2:
+                    continuationMask = 0x1F;
+                    continuationValue = 0xC0;
+                    break;
+                case 3:
+                    continuationMask = 0x0F;
+                    continuationValue = 0xE0;
+                    break;
+                case 4:
+                    continuationMask = 0x07;
+                    continuationValue = 0xF0;
+                    break;
                 }
-                const char cont = (codepoint & continuationMask) | continuationValue;
-                bytes = cont + bytes;
-                codepoint >>= 6;
             }
-            result += bytes;
+            const char cont = (codepoint & continuationMask) | continuationValue;
+            result = cont + result;
+            codepoint >>= 6;
+        }
+        return std::make_pair(result, bytesRead);
+    }
+
+    /**
+     * Reads a string for which the first two bytes indicate the length, then the rest is the string itself encoded in UTF-16.
+     *
+     * @param bytes The bytes contained in the LNK file.
+     * @param i     The offset to start reading at at (i.e. the offset containing the length of the string).
+     *
+     * @return Pair containing the string encoded as UTF-8 and the offset after the end of the string.
+     */
+    std::pair<std::string, size_t> readStringWithPrependedLength(const std::vector<uint8_t> &bytes, size_t i) const {
+        const size_t end = i + this->readInteger<uint16_t>(bytes, i) * 2;
+        i += 2;
+        std::string result;
+        while(i <= end){
+            const auto [codepoint, bytesRead] = this->readUtf16Codepoint(bytes, i, end);
+            result += codepoint;
+            i += bytesRead;
         }
         return std::make_pair(result, end + 2);
+    }
+
+    /**
+     * Reads a UTF-16 encoded string with a fixed length.
+     *
+     * @param bytes     The bytes contained in the LNK file.
+     * @param i         The offset to start reading at.
+     * @param length    The number of bytes to read.
+     *
+     * @return The string encoded as UTF-8.
+     */
+    std::string readFixedLengthString(const std::vector<uint8_t> &bytes, size_t offset, size_t length) const {
+        std::string result;
+        size_t i = 0;
+        while(i < length){
+            const auto [codepoint, bytesRead] = this->readUtf16Codepoint(bytes, i + offset + 2, bytes.size());
+            result += codepoint;
+            i += bytesRead;
+        }
+        return result;
     }
 
     #ifdef _WIN32
