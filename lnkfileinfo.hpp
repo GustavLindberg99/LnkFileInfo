@@ -1,7 +1,7 @@
 /*
  * LNK file info class
  * By Gustav Lindberg
- * Version 2.0.1
+ * Version 2.0.2
  * https://github.com/GustavLindberg99/LnkFileInfo
  * Information about how LNK files work is from https://github.com/lcorbasson/lnk-parse/blob/master/lnk-parse.pl
  */
@@ -204,8 +204,10 @@ public:
             pathOffset = start + this->readInteger<uint32_t>(bytes, start + 16);
             this->_targetPath = this->readNullTerminatedString(bytes, pathOffset);
         }
+
+        //Non-Latin1 target path, in this case the Latin1 target path contains question marks instead of Unicode characters (needed to determine the length of the target path), and is followed by the actual target path encoded in UTF-16.
         if(fileinfoHeader == 0x24){
-            this->_targetPath = this->readFixedLengthString(bytes, pathOffset + this->_targetPath.size(), this->_targetPath.size() * 2);
+            this->_targetPath = this->readFixedLengthString(bytes, pathOffset + this->_targetPath.size() - this->_targetPath.size() % 2, this->_targetPath.size() * 2);
         }
 
         //Additional info
@@ -503,13 +505,17 @@ private:
     std::string _absoluteFilePath;
     std::string _targetPath;
     std::string _targetVolumeName;
-    std::string _description, _relativeTargetPath, _workingDirectory, _commandLineArgs, _iconPath;
-    uint32_t _targetSize;
-    uint32_t _iconIndex;
-    uint32_t _targetVolumeSerial;
-    uint16_t _targetAttributes;
-    VolumeType _targetVolumeType;
-    bool _targetIsOnNetwork;
+    std::string _description;
+    std::string _relativeTargetPath;
+    std::string _workingDirectory;
+    std::string _commandLineArgs;
+    std::string _iconPath;
+    uint32_t _targetSize = 0;
+    uint32_t _iconIndex = 0;
+    uint32_t _targetVolumeSerial = 0;
+    uint16_t _targetAttributes = 0;
+    VolumeType _targetVolumeType = VolumeType::Unknown;
+    bool _targetIsOnNetwork = false;
 };
 
 #endif // LNKFILEINFO_HPP
