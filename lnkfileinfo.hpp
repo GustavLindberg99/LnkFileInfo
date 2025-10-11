@@ -1,7 +1,7 @@
 /*
  * LNK file info class
  * By Gustav Lindberg
- * Version 2.0.2
+ * Version 2.0.3
  * https://github.com/GustavLindberg99/LnkFileInfo
  * Information about how LNK files work is from https://github.com/lcorbasson/lnk-parse/blob/master/lnk-parse.pl
  */
@@ -175,7 +175,7 @@ public:
         const uint16_t start = 78 + this->readInteger<uint16_t>(bytes, 76);
         const uint8_t fileinfoHeader = this->readInteger<uint8_t>(bytes, start + 4);
         if(fileinfoHeader != 0x1C && fileinfoHeader != 0x24){
-            throw InvalidLnkFile("Invalid fileinfo header", this);
+            throw InvalidLnkFile("Invalid fileinfo header: " + std::to_string(fileinfoHeader), this);
         }
 
         //Target info
@@ -184,30 +184,36 @@ public:
         this->_targetIsOnNetwork = this->readInteger<uint8_t>(bytes, start + 8) & 0x02;
 
         //Path and volume info
-        size_t pathOffset;
         if(this->_targetIsOnNetwork){
             const uint32_t volumeOffset = start + this->readInteger<uint32_t>(bytes, start + 20);
             this->_targetVolumeType = VolumeType::NetworkDrive;
             this->_targetVolumeSerial = 0;
             const std::string volumeName = this->readNullTerminatedString(bytes, volumeOffset + 20);
             this->_targetVolumeName = volumeName;
-            pathOffset = volumeOffset + 21 + volumeName.size();
+            const size_t pathOffset = volumeOffset + 21 + volumeName.size();
             const std::string targetDrive = this->readNullTerminatedString(bytes, pathOffset);
-            pathOffset += targetDrive.size() + 1;
-            this->_targetPath = targetDrive + "\\" + this->readNullTerminatedString(bytes, pathOffset);
+            this->_targetPath = targetDrive + "\\" + this->readNullTerminatedString(bytes, pathOffset + targetDrive.size() + 1);
+
+            if(fileinfoHeader == 0x24){
+                this->_targetPath = targetDrive + "\\" + this->readFixedLengthString(bytes,
+                                                                                     pathOffset + this->_targetPath.size() - this->_targetPath.size() % 2,
+                                                                                     (this->_targetPath.size() - targetDrive.size() - 1) * 2);
+            }
         }
         else{
             const uint32_t volumeOffset = start + this->readInteger<uint32_t>(bytes, start + 12);
             this->_targetVolumeType = static_cast<VolumeType>(this->readInteger<uint32_t>(bytes, volumeOffset + 4));
             this->_targetVolumeSerial = this->readInteger<uint32_t>(bytes, volumeOffset + 8);
             this->_targetVolumeName = this->readNullTerminatedString(bytes, volumeOffset + 16);
-            pathOffset = start + this->readInteger<uint32_t>(bytes, start + 16);
+            const size_t pathOffset = start + this->readInteger<uint32_t>(bytes, start + 16);
             this->_targetPath = this->readNullTerminatedString(bytes, pathOffset);
-        }
 
-        //Non-Latin1 target path, in this case the Latin1 target path contains question marks instead of Unicode characters (needed to determine the length of the target path), and is followed by the actual target path encoded in UTF-16.
-        if(fileinfoHeader == 0x24){
-            this->_targetPath = this->readFixedLengthString(bytes, pathOffset + this->_targetPath.size() - this->_targetPath.size() % 2, this->_targetPath.size() * 2);
+            //Non-Latin1 target path, in this case the Latin1 target path contains question marks instead of Unicode characters (needed to determine the length of the target path), and is followed by the actual target path encoded in UTF-16.
+            if(fileinfoHeader == 0x24){
+                this->_targetPath = this->readFixedLengthString(bytes,
+                                                                pathOffset + this->_targetPath.size() - this->_targetPath.size() % 2,
+                                                                this->_targetPath.size() * 2);
+            }
         }
 
         //Additional info

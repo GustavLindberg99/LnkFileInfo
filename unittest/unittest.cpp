@@ -176,7 +176,7 @@ TEST(LnkFileInfoTest, Latin1LnkFile){
 /**
  * Test LNK file pointing to a file whose name contains Unicode characters, with a description containing Unicode characters. The target is read-only, hidden and compressed.
  */
-TEST(LnkFileInfoTest, Emoji1LnkFile){
+TEST(LnkFileInfoTest, EmojiLnkFile){
     LnkFileInfo lnk{TEST_LNK_FILES_DIR "/EmojiLnkFile.lnk"};
     EXPECT_EQ(lnk.absoluteTargetPath(), "C:\\Users\\glind\\Target😊.txt");
     EXPECT_EQ(lnk.commandLineArgs(), "");
@@ -209,7 +209,7 @@ TEST(LnkFileInfoTest, Emoji1LnkFile){
 /**
  * Test LNK file pointing to a file whose name contains Unicode characters. Needed in addition to EmojiLnkFile test since the offsets are slightly different depending on whether the target name has an odd or even number of characters.
  */
-TEST(LnkFileInfoTest, Emoji1LnkFile2){
+TEST(LnkFileInfoTest, EmojiLnkFile2){
     LnkFileInfo lnk{TEST_LNK_FILES_DIR "/😊LnkFile.lnk"};
     EXPECT_EQ(lnk.absoluteTargetPath(), "C:\\Users\\glind\\AppData\\Local\\Temp\\😊😂🤣🤣.txt");
     EXPECT_EQ(lnk.commandLineArgs(), "");
@@ -237,4 +237,103 @@ TEST(LnkFileInfoTest, Emoji1LnkFile2){
     EXPECT_EQ(lnk.targetVolumeType(), LnkFileInfo::HardDrive);
     EXPECT_EQ(lnk.targetVolumeName(), "Windows-SSD");
     EXPECT_EQ(lnk.workingDirectory(), "C:\\Users\\glind\\AppData\\Local\\Temp");
+}
+
+/**
+ * Test LNK file pointing to a file on a network drive.
+ */
+TEST(LnkFileInfoTest, NetworkDriveLnkFile){
+    LnkFileInfo lnk{TEST_LNK_FILES_DIR "/NetworkDriveLnkFile.lnk"};
+    EXPECT_EQ(lnk.absoluteTargetPath(), "B:\\usr");
+    EXPECT_EQ(lnk.commandLineArgs(), "");
+    EXPECT_EQ(lnk.description(), "");
+    EXPECT_EQ(lnk.hasCustomIcon(), false);
+    EXPECT_EQ(lnk.iconPath(), "");
+    EXPECT_EQ(lnk.iconIndex(), 0);
+    EXPECT_EQ(lnk.relativeTargetPath(), "");
+    EXPECT_EQ(lnk.targetIsOnNetwork(), true);
+    EXPECT_EQ(lnk.targetSize(), 0);
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::ReadOnly));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Hidden));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::System));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::VolumeLabel));
+    EXPECT_TRUE(lnk.targetHasAttribute(LnkFileInfo::Directory));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Archive));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::NtfsEfs));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Normal));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Temporary));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Sparse));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::ReparsePointData));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Compressed));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Offline));
+    EXPECT_EQ(lnk.targetVolumeSerial(), 0);
+    EXPECT_EQ(lnk.targetVolumeType(), LnkFileInfo::NetworkDrive);
+    EXPECT_EQ(lnk.targetVolumeName(), "\\\\wsl$\\Ubuntu");
+    EXPECT_EQ(lnk.workingDirectory(), "");
+}
+
+/**
+ * Test LNK file pointing to a file whose name contains Unicode characters on a network drive.
+ */
+TEST(LnkFileInfoTest, EmojiNetworkDriveLnkFile){
+    LnkFileInfo lnk{TEST_LNK_FILES_DIR "/EmojiNetworkDriveLnkFile.lnk"};
+    EXPECT_EQ(lnk.absoluteTargetPath(), "B:\\tmp\\Target😊.txt");
+    EXPECT_EQ(lnk.commandLineArgs(), "");
+    EXPECT_EQ(lnk.description(), "");
+    EXPECT_EQ(lnk.hasCustomIcon(), false);
+    EXPECT_EQ(lnk.iconPath(), "");
+    EXPECT_EQ(lnk.iconIndex(), 0);
+    EXPECT_EQ(lnk.relativeTargetPath(), ".\\Target😊.txt");
+    EXPECT_EQ(lnk.targetIsOnNetwork(), true);
+    EXPECT_EQ(lnk.targetSize(), 0);
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::ReadOnly));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Hidden));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::System));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::VolumeLabel));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Directory));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Archive));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::NtfsEfs));
+    EXPECT_TRUE(lnk.targetHasAttribute(LnkFileInfo::Normal));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Temporary));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Sparse));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::ReparsePointData));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Compressed));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Offline));
+    EXPECT_EQ(lnk.targetVolumeSerial(), 0);
+    EXPECT_EQ(lnk.targetVolumeType(), LnkFileInfo::NetworkDrive);
+    EXPECT_EQ(lnk.targetVolumeName(), "\\\\wsl$\\Ubuntu");
+    EXPECT_EQ(lnk.workingDirectory(), "B:\\tmp");
+}
+
+/**
+ * Test LNK file pointing to a file whose name contains Unicode characters on a network drive. Needed in addition to EmojiNetworkDriveLnkFile test since the offsets are slightly different depending on whether the target name has an odd or even number of characters.
+ */
+TEST(LnkFileInfoTest, EmojiNetworkDriveLnkFile2){
+    LnkFileInfo lnk{TEST_LNK_FILES_DIR "/😊NetworkDriveLnkFile.lnk"};
+    EXPECT_EQ(lnk.absoluteTargetPath(), "B:\\tmp\\ATarget😊.txt");
+    EXPECT_EQ(lnk.commandLineArgs(), "");
+    EXPECT_EQ(lnk.description(), "");
+    EXPECT_EQ(lnk.hasCustomIcon(), false);
+    EXPECT_EQ(lnk.iconPath(), "");
+    EXPECT_EQ(lnk.iconIndex(), 0);
+    EXPECT_EQ(lnk.relativeTargetPath(), ".\\ATarget😊.txt");
+    EXPECT_EQ(lnk.targetIsOnNetwork(), true);
+    EXPECT_EQ(lnk.targetSize(), 16);
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::ReadOnly));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Hidden));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::System));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::VolumeLabel));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Directory));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Archive));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::NtfsEfs));
+    EXPECT_TRUE(lnk.targetHasAttribute(LnkFileInfo::Normal));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Temporary));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Sparse));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::ReparsePointData));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Compressed));
+    EXPECT_FALSE(lnk.targetHasAttribute(LnkFileInfo::Offline));
+    EXPECT_EQ(lnk.targetVolumeSerial(), 0);
+    EXPECT_EQ(lnk.targetVolumeType(), LnkFileInfo::NetworkDrive);
+    EXPECT_EQ(lnk.targetVolumeName(), "\\\\wsl$\\Ubuntu");
+    EXPECT_EQ(lnk.workingDirectory(), "B:\\tmp");
 }
